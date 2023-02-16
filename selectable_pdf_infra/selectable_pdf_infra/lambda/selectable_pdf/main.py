@@ -23,19 +23,22 @@ Required environment variable
 # import modules
 # --------------
 # standard modules
+import traceback
+
 import os
 import boto3
 import json
 import datetime
 
 # custom modules from layers
-from textracttools import load_json_from_s3
+from textracttools import load_json_from_s3, manual_get_job_res
+
 from helpertools import (
     ProcessingDdbTable,
     get_logger,
     load_pdf_from_s3, 
     save_pdf_to_s3, 
-    make_pdf_doc_searchable
+    make_pdf_doc_searchable,
 )
 
 # typing
@@ -83,6 +86,17 @@ def lambda_handler(event, context):
         )
 
         # process the PDF
+        bucket = "sagemaker-coherehealth-1"
+        pdfkey = "tmp-eval-cedarfax/coverpgs/home 2.pdf"
+        blockkey = 'textract/tmp-eval-cedarfax/query/template-version1-filled.pdf/0630ab7e6e9fafc03803aa099aff0d566d42945f0e88ba9d422e57396a3488d2'
+        blockkey = "textract/tmp-eval-cedarfax/query/home 2.pdf/5dc5506ef1cb3568ddff4e48ff5234bcd31fcc97296e8f6e35d6ed83cd86130a"
+
+        pgs = manual_get_job_res(bucket, blockkey)
+        blocks = []
+        for pg in pgs:
+            blocks += pg['Blocks']
+        # textract_blocks = load_json_from_s3(bucket, blockkey)
+        # textract_blocks
         pdf_doc = load_pdf_from_s3(rec['original_document_s3']['bucket'], rec['original_document_s3']['key'])
         textract_blocks = load_json_from_s3(rec['textract_output_s3']['bucket'], rec['textract_output_s3']['key'])
         textract_blocks = textract_blocks['Blocks']
@@ -92,13 +106,27 @@ def lambda_handler(event, context):
             if blk['BlockType'] == 'WORD':
                 num_word_blocks += 1
         logger.info(f'number of WORD blocks {num_word_blocks}')
-
+        d2 = pdf_doc
+    # try:
+        pdf_doc = load_pdf_from_s3(bucket, pdfkey)
+    #     # raise Exception("ERROR HERE") # Some code that caused the exception/error
+        selectable_pdf_doc = make_pdf_doc_searchable(
+            pdf_doc=pdf_doc,
+            textract_blocks=blocks,
+            # add_word_bbox=args['add_word_bbox'],
+            # show_selectable_char=args['show_character'],
+            # pdf_image_dpi=args['pdf_image_dpi'],
+            verbose=True
+        )
+        selectable_pdf_doc.save("tmp.pdf")
+    # except:
+    #     traceback.print_exc()
         selectable_pdf_doc = make_pdf_doc_searchable(
             pdf_doc=pdf_doc,
             textract_blocks=textract_blocks,
-            add_word_bbox=args['add_word_bbox'],
-            show_selectable_char=args['show_character'],
-            pdf_image_dpi=args['pdf_image_dpi'],
+            # add_word_bbox=args['add_word_bbox'],
+            # show_selectable_char=args['show_character'],
+            # pdf_image_dpi=args['pdf_image_dpi'],
             verbose=True
         )
         output_key = document_name
